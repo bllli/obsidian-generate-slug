@@ -1,23 +1,24 @@
 import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
 
-// Remember to rename these classes and interfaces!
 
-interface MyPluginSettings {
-	mySetting: string;
+interface GenerateSlugPluginSettings {
+	openai_base_url: string;
+	openai_api_key: string;
 }
 
-const DEFAULT_SETTINGS: MyPluginSettings = {
-	mySetting: 'default'
+const DEFAULT_SETTINGS: GenerateSlugPluginSettings = {
+	openai_base_url: 'https://api.openai.com/v1',
+	openai_api_key: ''
 }
 
-export default class MyPlugin extends Plugin {
-	settings: MyPluginSettings;
+export default class GenerateSlugPlugin extends Plugin {
+	settings: GenerateSlugPluginSettings;
 
 	async onload() {
 		await this.loadSettings();
 
 		// This adds a settings tab so the user can configure various aspects of the plugin
-		this.addSettingTab(new SampleSettingTab(this.app, this));
+		this.addSettingTab(new GenerateSlugSettingTab(this.app, this));
 
 		// This adds a status bar item to the bottom of the app. Does not work on mobile apps.
 		const statusBarItemEl = this.addStatusBarItem();
@@ -59,26 +60,10 @@ export default class MyPlugin extends Plugin {
 	}
 }
 
-class SampleModal extends Modal {
-	constructor(app: App) {
-		super(app);
-	}
+class GenerateSlugSettingTab extends PluginSettingTab {
+	plugin: GenerateSlugPlugin;
 
-	onOpen() {
-		const {contentEl} = this;
-		contentEl.setText('Woah!');
-	}
-
-	onClose() {
-		const {contentEl} = this;
-		contentEl.empty();
-	}
-}
-
-class SampleSettingTab extends PluginSettingTab {
-	plugin: MyPlugin;
-
-	constructor(app: App, plugin: MyPlugin) {
+	constructor(app: App, plugin: GenerateSlugPlugin) {
 		super(app, plugin);
 		this.plugin = plugin;
 	}
@@ -89,13 +74,21 @@ class SampleSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('Setting #1')
-			.setDesc('It\'s a secret')
+			.setName('OpenAI Base URL')
+			.setDesc('The base URL for the OpenAI API. looks like https://api.deepseek.com/v1')
 			.addText(text => text
-				.setPlaceholder('Enter your secret')
-				.setValue(this.plugin.settings.mySetting)
+				.setValue(this.plugin.settings.openai_base_url)
 				.onChange(async (value) => {
-					this.plugin.settings.mySetting = value;
+					this.plugin.settings.openai_base_url = value;
+					await this.plugin.saveSettings();
+				}));
+		new Setting(containerEl)
+			.setName('OpenAI API Key')
+			.setDesc('The API key for the OpenAI API')
+			.addText(text => text
+				.setValue(this.plugin.settings.openai_api_key)
+				.onChange(async (value) => {
+					this.plugin.settings.openai_api_key = value;
 					await this.plugin.saveSettings();
 				}));
 	}
