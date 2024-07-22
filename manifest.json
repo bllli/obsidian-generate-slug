@@ -1,11 +1,10 @@
 {
-	"id": "sample-plugin",
-	"name": "Sample Plugin",
-	"version": "1.0.0",
+	"id": "ai-slug-generate-plugin",
+	"name": "Generate Slug AI",
+	"version": "0.1",
 	"minAppVersion": "0.15.0",
-	"description": "Demonstrates some of the capabilities of the Obsidian API.",
-	"author": "Obsidian",
-	"authorUrl": "https://obsidian.md",
-	"fundingUrl": "https://obsidian.md/pricing",
+	"description": "Generate a slug for a note using AI ( OpenAI compatible )",
+	"author": "bllli",
+	"authorUrl": "https://github.com/bllli",
 	"isDesktopOnly": false
 }
