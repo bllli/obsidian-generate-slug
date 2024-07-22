@@ -1,15 +1,147 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, Setting } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, RequestUrlResponse, Setting, TAbstractFile } from 'obsidian';
 
 
 interface GenerateSlugPluginSettings {
-	openai_base_url: string;
+	openai_completion_url: string;
 	openai_api_key: string;
+	openai_model: string;
 }
 
 const DEFAULT_SETTINGS: GenerateSlugPluginSettings = {
-	openai_base_url: 'https://api.openai.com/v1',
-	openai_api_key: ''
+	openai_completion_url: 'https://api.deepseek.com/chat/completions',
+	openai_model: 'deepseek-chat',
+	openai_api_key: '',
 }
+
+const PROMPT = `# Goal
+用户提供文件名，你为文件生成只含有英文、连字符-、数字的slug
+
+# Example
+输入 linux中移除sshkey的密码
+输出 remove-ssh-key-passphrase
+
+# Attention
+- 牢记 你只是在帮助用户编写 slug
+- 只生成slug
+- 不要生成完整的文件名
+- slug要详尽而具体
+`
+
+class GeneratingModal extends Modal {
+	file: TAbstractFile;
+	settings: GenerateSlugPluginSettings;
+	error: string;
+
+	constructor(app: App, settings: GenerateSlugPluginSettings, file: TAbstractFile) {
+		super(app);
+		this.settings = settings;
+		this.file = file;
+	}
+
+	async generateSlug(content: string): Promise<string> {
+		const url = this.settings.openai_completion_url;
+		if (!url) {
+			new Notice('OpenAI URL not set!');
+			return '';
+		}
+
+		const options: RequestUrlParam = {
+		    url: url,
+		    method: 'POST',
+		    headers: {
+		        'Content-Type': 'application/json',
+				'Authorization': `Bearer ${this.settings.openai_api_key}`
+		    },
+		    body: JSON.stringify({
+						model: 'deepseek-chat',
+						messages: [
+							{ role: 'system', content: PROMPT },
+							{ role: 'user', content: content }
+						],
+						stream: false
+					})
+		}
+		var response: RequestUrlResponse;
+
+		try
+		{
+			response = await requestUrl(options);
+		    return response.json.choices[0].message.content;
+		}
+		catch (e) {
+			this.error = JSON.stringify(e);
+		}
+		return '';
+	}
+	
+	updateSlugValue(slugValue: string) {
+		const slug_property_name = 'slug';
+		const vault = this.app.vault;
+		const f = this.file.vault.getFileByPath(this.file.path)
+		if (!f) {
+			new Notice('File not found!');
+			return;
+		}
+		vault.read(f).then(async (content) => {
+			// find properties, using regex
+			const properties = content.match(new RegExp(`^---\n([\\s\\S]*?)\n---`));
+			if (!properties) {
+				// add properties if not found
+				const newProperties = `---\n${slug_property_name}: ${slugValue}\n---`;
+				const newContent = newProperties + content;
+				await vault.modify(f, newContent);
+				return;
+			}
+			
+			// find slug property
+			const slug_property = properties[1].match(new RegExp(`^${slug_property_name}: (.*)`, 'm'));
+			if (!slug_property) {
+				// add slug property
+				const newProperties = properties[1] + `\n${slug_property_name}: ${slugValue}`;
+				const newContent = content.replace(properties[1], newProperties);
+				await vault.modify(f, newContent);
+				return;
+			} else {
+				const newProperties = properties[1].replace(new RegExp(`^${slug_property_name}: (.*)`, 'm'), `${slug_property_name}: ${slugValue}`);
+				const newContent = content.replace(properties[1], newProperties);
+				await vault.modify(f, newContent);
+			}
+			new Notice('Slug generated!');
+			this.close();
+		})
+	}
+
+	onOpen() {
+		const {contentEl} = this;
+		contentEl.setText('Generating slug...');
+		const file = this.file;
+		const f = this.file.vault.getFileByPath(this.file.path)
+		if (!f) {
+			new Notice('File not found!');
+			return;
+		}
+
+		const filename = file.name;
+		new Notice(`Generating slug for ${filename}`);
+		this.generateSlug(filename).then((slugValue) => {
+			if (this.error) {
+				contentEl.setText('Generate ERROR!\n' + this.error);
+				return;
+			} else {
+				this.updateSlugValue(slugValue);
+			}
+		}).catch((e) => {
+			this.error = JSON.stringify(e);
+			contentEl.setText('Generate ERROR!\n' + this.error);
+		})
+	}
+
+	onClose() {
+		const {contentEl} = this;
+		contentEl.empty();
+	}
+}
+
 
 export default class GenerateSlugPlugin extends Plugin {
 	settings: GenerateSlugPluginSettings;
@@ -34,13 +166,14 @@ export default class GenerateSlugPlugin extends Plugin {
 				editor.replaceSelection('Sample Editor Command');
 			}
 		});
+		
 
 		this.registerEvent(
 			this.app.workspace.on('file-menu', (menu, file) => {
 				menu.addItem((item) => {
 					item.setTitle('Generate Slug')
 						.onClick(() => {
-							new Notice('Menu item clicked!');
+							new GeneratingModal(this.app, this.settings, file).open();
 						});
 				});
 			}
@@ -74,12 +207,12 @@ class GenerateSlugSettingTab extends PluginSettingTab {
 		containerEl.empty();
 
 		new Setting(containerEl)
-			.setName('OpenAI Base URL')
-			.setDesc('The base URL for the OpenAI API. looks like https://api.deepseek.com/v1')
+			.setName('OpenAI Completion URL')
+			.setDesc('The URL for the OpenAI Completion API, e.g. https://api.openai.com/v1/engines/davinci/completions')
 			.addText(text => text
-				.setValue(this.plugin.settings.openai_base_url)
+				.setValue(this.plugin.settings.openai_completion_url)
 				.onChange(async (value) => {
-					this.plugin.settings.openai_base_url = value;
+					this.plugin.settings.openai_completion_url = value;
 					await this.plugin.saveSettings();
 				}));
 		new Setting(containerEl)
