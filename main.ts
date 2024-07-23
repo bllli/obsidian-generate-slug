@@ -1,19 +1,6 @@
-import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, RequestUrlResponse, Setting, TAbstractFile } from 'obsidian';
+import { App, Editor, MarkdownView, Modal, Notice, Plugin, PluginSettingTab, requestUrl, RequestUrlParam, RequestUrlResponse, Setting, TAbstractFile, TextComponent } from 'obsidian';
 
-
-interface GenerateSlugPluginSettings {
-	openai_completion_url: string;
-	openai_api_key: string;
-	openai_model: string;
-}
-
-const DEFAULT_SETTINGS: GenerateSlugPluginSettings = {
-	openai_completion_url: 'https://api.deepseek.com/chat/completions',
-	openai_model: 'deepseek-chat',
-	openai_api_key: '',
-}
-
-const PROMPT = `# Goal
+const DEFAULT_PROMPT = `# Goal
 用户提供文件名，你为文件生成只含有英文、连字符-、数字的slug
 
 # Example
@@ -26,6 +13,20 @@ const PROMPT = `# Goal
 - 不要生成完整的文件名
 - slug要详尽而具体
 `
+
+interface GenerateSlugPluginSettings {
+	openai_completion_url: string;
+	openai_api_key: string;
+	openai_model: string;
+	prompt: string;
+}
+
+const DEFAULT_SETTINGS: GenerateSlugPluginSettings = {
+	openai_completion_url: 'https://api.deepseek.com/chat/completions',
+	openai_model: 'deepseek-chat',
+	openai_api_key: '',
+	prompt: DEFAULT_PROMPT,
+}
 
 class GeneratingModal extends Modal {
 	file: TAbstractFile;
@@ -40,8 +41,25 @@ class GeneratingModal extends Modal {
 
 	async generateSlug(content: string): Promise<string> {
 		const url = this.settings.openai_completion_url;
+		const model = this.settings.openai_model;
+		const prompt = this.settings.prompt;
 		if (!url) {
-			new Notice('OpenAI URL not set!');
+			new Notice('[Generate Slug] OpenAI Completion URL not set!');
+			return '';
+		}
+
+		if (!this.settings.openai_api_key) {
+			new Notice('[Generate Slug] OpenAI API Key not set!');
+			return '';
+		}
+
+		if (!model) {
+			new Notice('[Generate Slug] OpenAI Model not set!');
+			return '';
+		}
+
+		if (!prompt) {
+			new Notice('[Generate Slug] Prompt not set!');
 			return '';
 		}
 
@@ -53,9 +71,9 @@ class GeneratingModal extends Modal {
 				'Authorization': `Bearer ${this.settings.openai_api_key}`
 		    },
 		    body: JSON.stringify({
-						model: 'deepseek-chat',
+						model: model,
 						messages: [
-							{ role: 'system', content: PROMPT },
+							{ role: 'system', content: prompt },
 							{ role: 'user', content: content }
 						],
 						stream: false
@@ -206,23 +224,58 @@ class GenerateSlugSettingTab extends PluginSettingTab {
 
 		containerEl.empty();
 
-		new Setting(containerEl)
+		const urlSetting = new Setting(containerEl)
 			.setName('OpenAI Completion URL')
 			.setDesc('The URL for the OpenAI Completion API, e.g. https://api.openai.com/v1/engines/davinci/completions')
-			.addText(text => text
-				.setValue(this.plugin.settings.openai_completion_url)
-				.onChange(async (value) => {
-					this.plugin.settings.openai_completion_url = value;
-					await this.plugin.saveSettings();
-				}));
+			.addText(text => {
+				text.inputEl.addClass('plugin-generate-slug-settings-input');
+				return text
+					.setValue(this.plugin.settings.openai_completion_url)
+					.onChange(async (value) => {
+						this.plugin.settings.openai_completion_url = value;
+						await this.plugin.saveSettings();
+					});
+			});
+		
+		// urlSetting.controlEl.addClass('generate-slug-setting');
+		
 		new Setting(containerEl)
 			.setName('OpenAI API Key')
 			.setDesc('The API key for the OpenAI API')
-			.addText(text => text
-				.setValue(this.plugin.settings.openai_api_key)
-				.onChange(async (value) => {
-					this.plugin.settings.openai_api_key = value;
-					await this.plugin.saveSettings();
-				}));
+			.addText(text => {
+				text.inputEl.addClass('plugin-generate-slug-settings-input');
+				return text
+					.setValue(this.plugin.settings.openai_api_key)
+					.onChange(async (value) => {
+						this.plugin.settings.openai_api_key = value;
+						await this.plugin.saveSettings();
+					});
+			});
+
+		new Setting(containerEl)
+			.setName('OpenAI Model')
+			.setDesc('The OpenAI model to use, e.g. deepseek-chat')
+			.addText(text => {
+				text.inputEl.addClass('plugin-generate-slug-settings-input');
+				return text
+					.setValue(this.plugin.settings.openai_model)
+					.onChange(async (value) => {
+						this.plugin.settings.openai_model = value;
+						await this.plugin.saveSettings();
+					});
+			});
+		
+		new Setting(containerEl)
+			.setName('Prompt')
+			.setDesc('The prompt for the OpenAI API')
+			.addTextArea(text => {
+				text.inputEl.addClass('plugin-generate-slug-settings-textarea');
+				return text
+					.setValue(this.plugin.settings.prompt)
+					.onChange(async (value) => {
+						this.plugin.settings.prompt = value;
+						await this.plugin.saveSettings();
+					});
+			});
 	}
 }
